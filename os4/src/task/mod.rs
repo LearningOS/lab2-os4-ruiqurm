@@ -14,7 +14,9 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use core::{slice::from_raw_parts,mem::size_of,};
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -147,6 +149,15 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    fn copy_to_user(&self,dst:VirtAddr,data:&[u8]) -> i32 {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        let ms = &mut inner.tasks[current_task].memory_set;
+        let ret = ms.copy_data(dst, data);
+        drop(inner);
+        ret
+    }
 }
 
 /// Run the first task in task list.
@@ -190,4 +201,15 @@ pub fn current_user_token() -> usize {
 /// Get the current 'Running' task's trap contexts.
 pub fn current_trap_cx() -> &'static mut TrapContext {
     TASK_MANAGER.get_current_trap_cx()
+}
+
+pub unsafe fn copy_to_user<T>(dst:VirtAddr,data:&T) -> i32{
+    TASK_MANAGER.copy_to_user(dst, unsafe{to_raw_array(data)})
+}
+
+pub unsafe fn to_raw_array<T: Sized>(p: &T) -> &[u8] {
+    from_raw_parts(
+        (p as *const T) as *const u8,
+        size_of::<T>(),
+    )
 }

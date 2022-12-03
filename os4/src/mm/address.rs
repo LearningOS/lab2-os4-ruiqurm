@@ -198,6 +198,9 @@ where
     pub fn get_end(&self) -> T {
         self.r
     }
+    pub fn in_range(&self, pos:T) -> bool{
+        self.l <= pos && self.r > pos
+    }
 }
 impl<T> IntoIterator for SimpleRange<T>
 where

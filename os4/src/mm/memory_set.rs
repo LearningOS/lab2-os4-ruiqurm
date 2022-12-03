@@ -1,5 +1,7 @@
 //! Implementation of [`MapArea`] and [`MemorySet`].
 
+use core::panic;
+
 use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
@@ -216,6 +218,41 @@ impl MemorySet {
     }
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.page_table.translate(vpn)
+    }
+
+    /// check each area and copy to correct MapArea
+    pub fn copy_data(&mut self, pos : VirtAddr,data: &[u8]) -> i32{
+        for area in &mut self.areas{
+            if area.vpn_range.in_range(VirtPageNum::from(pos.floor())){
+                assert_eq!(area.map_type, MapType::Framed);
+                let mut start  = pos.page_offset();
+                let mut src_offset:usize = 0;
+                let mut current_vpn = VirtPageNum::from(pos.floor());
+                let len = data.len();
+                loop{
+                    let src:&[u8];
+                    if src_offset == 0 {
+                        src = &data[..len.min(PAGE_SIZE-start)];
+                    }else{
+                        src = &data[src_offset..len.min(src_offset+PAGE_SIZE)];
+                    }
+                    let dst = &mut self.page_table
+                                .translate(current_vpn)
+                                .unwrap()
+                                .ppn()
+                                .get_bytes_array()[start..start+src.len()];
+                    dst.copy_from_slice(src);
+                    src_offset+=PAGE_SIZE;
+                    start = 0;
+                    if src_offset >= len{
+                        break;
+                    }
+                    current_vpn.step();
+                }
+                return 0;
+            }
+        }
+        -1
     }
 }
 

@@ -1,7 +1,7 @@
 //! Process management syscalls
 use crate::config::{MAX_SYSCALL_NUM, PAGE_SIZE};
 use crate::mm::{VirtAddr, MapPermission};
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, copy_to_user, mmap, munmap};
+use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, copy_to_user, mmap, munmap, get_task_info};
 use crate::timer::get_time_us;
 
 #[repr(C)]
@@ -74,7 +74,14 @@ pub fn sys_munmap(start: usize, len: usize) -> isize {
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    -1
+    let (current_time,table) = get_task_info();
+    let t = TaskInfo{
+        status : TaskStatus::Running,
+        syscall_times : table,
+        time : current_time
+    };
+    let dst = VirtAddr::from(ti as usize);
+    unsafe{copy_to_user(dst, &t) as isize } 
 }
 
 

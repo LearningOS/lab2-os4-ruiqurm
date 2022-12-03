@@ -15,9 +15,11 @@ mod switch;
 mod task;
 
 use core::{slice::from_raw_parts,mem::size_of,};
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::mm::{VirtAddr, MapPermission};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_us;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -81,6 +83,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let next_task = &mut inner.tasks[0];
         next_task.task_status = TaskStatus::Running;
+        next_task.start_time = get_time_us() / 1000;
         let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
         drop(inner);
         let mut _unused = TaskContext::zero_init();
@@ -135,6 +138,9 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
+            if inner.tasks[next].start_time == 0{
+                inner.tasks[next].start_time = get_time_us() / 1000;
+            }
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
@@ -173,6 +179,26 @@ impl TaskManager {
         let current_task = inner.current_task;
         let ms = &mut inner.tasks[current_task].memory_set;
         let ret = ms.munmap(start, end);
+        drop(inner);
+        ret
+    }
+
+    fn inc_syscall_table(&self,syscall:usize){
+        if syscall >= MAX_SYSCALL_NUM{
+            panic!("exceed MAX_SYSCALL_NUM")
+        }else{
+            let mut inner = self.inner.exclusive_access();
+            let current = inner.current_task;
+            inner.tasks[current].syscall_stat[syscall] += 1;
+            drop(inner);
+        }
+
+    }
+
+    fn current_task_info(&self) -> (usize,[u32;MAX_SYSCALL_NUM]){
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let ret = (get_time_us() / 1000 - inner.tasks[current].start_time, inner.tasks[current].syscall_stat);
         drop(inner);
         ret
     }
@@ -238,4 +264,13 @@ pub fn mmap(start:VirtAddr,end:VirtAddr,permission:MapPermission) ->isize{
 
 pub fn munmap(start:VirtAddr,end:VirtAddr) ->isize{
     TASK_MANAGER.munmap(start, end)
+}
+
+pub fn inc_syscall_table(syscall:usize){
+    TASK_MANAGER.inc_syscall_table(syscall);
+}
+
+/// get current task running time and syscall statistics
+pub fn get_task_info() -> (usize,[u32;MAX_SYSCALL_NUM]){
+    TASK_MANAGER.current_task_info()
 }

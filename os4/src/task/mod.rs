@@ -16,7 +16,7 @@ mod task;
 
 use core::{slice::from_raw_parts,mem::size_of,};
 use crate::loader::{get_app_data, get_num_app};
-use crate::mm::VirtAddr;
+use crate::mm::{VirtAddr, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -158,6 +158,24 @@ impl TaskManager {
         drop(inner);
         ret
     }
+
+    fn mmap(&self,start:VirtAddr,end:VirtAddr,permission:MapPermission) ->isize{
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        let ms = &mut inner.tasks[current_task].memory_set;
+        let ret = ms.mmap(start, end, permission);
+        drop(inner);
+        ret
+    }
+
+    fn munmap(&self,start:VirtAddr,end:VirtAddr) ->isize{
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        let ms = &mut inner.tasks[current_task].memory_set;
+        let ret = ms.munmap(start, end);
+        drop(inner);
+        ret
+    }
 }
 
 /// Run the first task in task list.
@@ -212,4 +230,12 @@ pub unsafe fn to_raw_array<T: Sized>(p: &T) -> &[u8] {
         (p as *const T) as *const u8,
         size_of::<T>(),
     )
+}
+
+pub fn mmap(start:VirtAddr,end:VirtAddr,permission:MapPermission) ->isize{
+    TASK_MANAGER.mmap(start, end, permission)
+}
+
+pub fn munmap(start:VirtAddr,end:VirtAddr) ->isize{
+    TASK_MANAGER.munmap(start, end)
 }

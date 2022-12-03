@@ -1,7 +1,7 @@
 //! Process management syscalls
-use crate::config::MAX_SYSCALL_NUM;
-use crate::mm::VirtAddr;
-use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, copy_to_user};
+use crate::config::{MAX_SYSCALL_NUM, PAGE_SIZE};
+use crate::mm::{VirtAddr, MapPermission};
+use crate::task::{exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, copy_to_user, mmap, munmap};
 use crate::timer::get_time_us;
 
 #[repr(C)]
@@ -47,12 +47,29 @@ pub fn sys_set_priority(_prio: isize) -> isize {
 }
 
 // YOUR JOB: 扩展内核以实现 sys_mmap 和 sys_munmap
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    -1
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
+    if (port & !0x7 != 0) || (port & 0x7 == 0) || (start % PAGE_SIZE != 0){
+        return -1;
+    }
+    let end = VirtAddr::from(start + len);
+    let start = VirtAddr::from(start);
+    let mut perm = MapPermission::U;
+    if port&0x1 != 0{
+        perm |= MapPermission::R;
+    }
+    if port&0x2 != 0{
+        perm |= MapPermission::W;
+    }
+    if port&0x4 != 0{
+        perm |= MapPermission::X;
+    }
+    mmap(start, end, perm)
 }
 
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    -1
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    let end = VirtAddr::from(start + len);
+    let start = VirtAddr::from(start);
+    munmap(start, end)
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
